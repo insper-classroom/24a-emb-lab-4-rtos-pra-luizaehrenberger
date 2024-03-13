@@ -237,8 +237,8 @@ int main() {
         return 1;
     }
 
-    xTaskCreate(oled1_demo_2, "Demo 2", 4095, NULL, 1, NULL);
-    xTaskCreate(oled1_demo_1, "Demo 1", 4095, NULL, 1, NULL);
+    //xTaskCreate(oled1_demo_2, "Demo 2", 4095, NULL, 1, NULL);
+    //xTaskCreate(oled1_demo_1, "Demo 1", 4095, NULL, 1, NULL);
     xTaskCreate(trigger_task, "Trigger", 4095, NULL, 1, NULL);
     xTaskCreate(echo_task, "Echo", 4095, NULL, 1, NULL);
     xTaskCreate(oled_task, "OLED", 4095, NULL, 1, NULL);
