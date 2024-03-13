@@ -45,7 +45,7 @@ void pin_callback(uint gpio, uint32_t events){
     }
 }
 
-void trigger_task(){
+void trigger_task(void *params){
     gpio_init(TRIGGER_PIN);
     gpio_set_dir(TRIGGER_PIN, GPIO_OUT);
     gpio_put(TRIGGER_PIN, 0);
@@ -83,7 +83,7 @@ void echo_task(void *params) {
             }
 
             // Enviar a distância para a fila xQueueDistance
-            xQueueSend(echoQueueDistance, &distance_cm, portMAX_DELAY);
+            
         }
     
     }
