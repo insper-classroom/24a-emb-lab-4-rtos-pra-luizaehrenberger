@@ -20,11 +20,11 @@ const uint LED_1_OLED = 20;
 const uint LED_2_OLED = 21;
 const uint LED_3_OLED = 22;
 
-const uint ECHO_PIN;
+const uint ECHO_PIN = 16;
 QueueHandle_t echoQueueTime;
 QueueHandle_t echoQueueDistance;
 
-const uint TRIGGER_PIN;
+const uint TRIGGER_PIN = 3;
 SemaphoreHandle_t triggerSemaphore;
 
 void pin_callback(uint gpio, uint32_t events){
