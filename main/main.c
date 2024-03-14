@@ -1,16 +1,12 @@
-/*
- * LED blink with FreeRTOS
- */
-#include <FreeRTOS.h>
-#include <task.h>
-#include <semphr.h>
-#include <queue.h>
-
+#include <stdio.h>
+#include "pico/stdlib.h"
+#include "hardware/gpio.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
+#include "queue.h"
 #include "ssd1306.h"
 #include "gfx.h"
-
-#include "pico/stdlib.h"
-#include <stdio.h>
 
 const uint BTN_1_OLED = 28;
 const uint BTN_2_OLED = 26;
@@ -21,15 +17,16 @@ const uint LED_2_OLED = 21;
 const uint LED_3_OLED = 22;
 
 const uint ECHO_PIN = 16;
-QueueHandle_t echoQueueTime;
 QueueHandle_t echoQueueDistance;
 
 const uint TRIGGER_PIN = 3;
 SemaphoreHandle_t triggerSemaphore;
 
+ssd1306_t disp;
+
 void pin_callback(uint gpio, uint32_t events){
+    static BaseType_t xHigherPriorityTaskWoken;
     static absolute_time_t start_time;
-    absolute_time_t end_time;
     int64_t time_diff_us;
 
     if (events & GPIO_IRQ_EDGE_RISE) {
@@ -37,11 +34,11 @@ void pin_callback(uint gpio, uint32_t events){
         start_time = get_absolute_time();
     } else if (events & GPIO_IRQ_EDGE_FALL) {
         // Fim do sinal de eco
-        end_time = get_absolute_time();
+        absolute_time_t end_time = get_absolute_time();
         time_diff_us = absolute_time_diff_us(start_time, end_time);
-
+        float distance_m = time_diff_us * 0.034 / 2;   
         // Enviar o tempo de eco para a fila xQueueTime
-        xQueueSendFromISR(echoQueueTime, &time_diff_us, NULL);
+        xQueueSendFromISR(echoQueueDistance, &distance_m, &xHigherPriorityTaskWoken);
     }
 }
 
@@ -64,34 +61,22 @@ void trigger_task(void *params){
 
 }
 void echo_task(void *params) {
-    int64_t start_time_us = 0, end_time_us = 0, duration_us = 0;
-    float distance_cm = 0;
-    int64_t time_diff_us = 0;
-
     while(true){
-        if(xQueueReceive(echoQueueTime, &time_diff_us, portMAX_DELAY)){
-            // inicio ou fim do pulso
-            if(start_time_us == 0) {
-                start_time_us = time_diff_us;
-            } else {
-                end_time_us = time_diff_us;
-                duration_us = end_time_us - start_time_us;
-                distance_cm = duration_us * 0.034 / 2;
-                start_time_us = 0;
-                
-                xQueueSend(echoQueueDistance, &distance_cm, portMAX_DELAY);
-            }
+        if(xSemaphoreTake(triggerSemaphore, portMAX_DELAY)){
+            // Enviar um pulso de 10us no pino TRIGGER_PIN
+            gpio_put(TRIGGER_PIN, 1);
+            sleep_us(10);
+            gpio_put(TRIGGER_PIN, 0);
 
-            // Enviar a distância para a fila xQueueDistance
-            
+            // Aguardar 60ms antes de enviar um novo pulso
+            vTaskDelay(pdMS_TO_TICKS(60));
         }
-    
     }
 }
 
 void oled_task(void *p) {
-    float distance_cm = 0;
-
+    float distance_cm;
+    float scale = 0.64;
     //display OLED
     ssd1306_t disp;
     ssd1306_init();
@@ -103,12 +88,16 @@ void oled_task(void *p) {
 
             // Limpa o buffer do display
             gfx_clear_buffer(&disp);
-
+            gfx_draw_string(&disp, 0, 0, 1, "Distancia:");
             // Prepara a string para mostrar a distância
-            char buffer[20];
+            char buffer[16];
             snprintf(buffer, sizeof(buffer), "Dist: %.2f cm", distance_cm);
-            gfx_draw_string(&disp, 0, 0, 1, buffer);
-
+            gfx_draw_string(&disp, 0, 10, 1, buffer);
+            int bar = (int)(distance_cm * scale* 100);
+            if(bar > 128) {
+                bar = 128;
+            }
+            gfx_draw_line(&disp, 0, 20, bar, 20);
             // Atualiza o display
             gfx_show(&disp);
 
@@ -227,21 +216,27 @@ void oled1_demo_2(void *p) {
 int main() {
     stdio_init_all();
 
-    echoQueueTime = xQueueCreate(5, sizeof(int64_t));
+    gpio_init(TRIGGER_PIN);
+    gpio_set_dir(TRIGGER_PIN, GPIO_OUT);
+    gpio_put(TRIGGER_PIN, 0);
+
+    gpio_init(ECHO_PIN);
+    gpio_set_dir(ECHO_PIN, GPIO_IN);
+    gpio_set_irq_enabled_with_callback(ECHO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &pin_callback);
+
+    ssd1306_init();
+    gfx_init(&disp, 128, 32);
+
     triggerSemaphore = xSemaphoreCreateBinary();
     xSemaphoreGive(triggerSemaphore);
 
     echoQueueDistance = xQueueCreate(5, sizeof(float));
-    if(echoQueueTime == NULL || echoQueueDistance == NULL){
-        printf("Erro ao criar fila\n");
-        return 1;
-    }
 
     //xTaskCreate(oled1_demo_2, "Demo 2", 4095, NULL, 1, NULL);
     //xTaskCreate(oled1_demo_1, "Demo 1", 4095, NULL, 1, NULL);
-    xTaskCreate(trigger_task, "Trigger", 4095, NULL, 1, NULL);
-    xTaskCreate(echo_task, "Echo", 4095, NULL, 1, NULL);
-    xTaskCreate(oled_task, "OLED", 4095, NULL, 1, NULL);
+    xTaskCreate(trigger_task, "Trigger Task", 4095, NULL, 1, NULL);
+    xTaskCreate(echo_task, "Echo Task", 4095, NULL, 1, NULL);
+    xTaskCreate(oled_task, "OLED Task", 4095, NULL, 1, NULL);
 
 
     vTaskStartScheduler();
