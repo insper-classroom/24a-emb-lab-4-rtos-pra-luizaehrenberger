@@ -22,7 +22,7 @@ QueueHandle_t echoQueueDistance;
 const uint TRIGGER_PIN = 3;
 SemaphoreHandle_t triggerSemaphore;
 
-ssd1306_t disp;
+//ssd1306_t disp;
 
 void pin_callback(uint gpio, uint32_t events){
     static BaseType_t xHigherPriorityTaskWoken;
@@ -111,6 +111,7 @@ void oled_task(void *p) {
 
 int main() {
     stdio_init_all();
+    ssd1306_t disp;
 
     gpio_init(TRIGGER_PIN);
     gpio_set_dir(TRIGGER_PIN, GPIO_OUT);
